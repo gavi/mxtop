@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from datetime import datetime
 from rich.live import Live
+import os,sys
 
 def enqueue_output(pipe, queue):
     try:
@@ -115,6 +116,9 @@ cpus = {}
 gpu =  Bar(1,begin=0,end=0)
 
 def main():
+     # Check if the current user ID is not 0 (root)
+    if os.geteuid() != 0:
+        sys.exit("This script must be run as root. Please use sudo.")
     output_queue = queue.LifoQueue()
 
     command = [
