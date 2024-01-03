@@ -59,15 +59,21 @@ def update_gpus(plist):
 
 def update_process(plist) -> Table:
     table = Table(expand=True)
-    table.add_column("id")
-    table.add_column("name")
-    table.add_column("cpu_time")
-    table.add_column("gpu_time")
+    # table.add_column("id", justify="right", width=5)
+    table.add_column("cpu_time", justify="right", ratio=1)
+    table.add_column("gpu_time", justify="right", ratio=1)
+    table.add_column("bytes_read", justify="right", ratio=1)
+    table.add_column("bytes_written", justify="right", ratio=1)
+    
+    table.add_column("name", ratio=10)
 
     tasks = plist.get('coalitions', [])
     for task in tasks:
-        table.add_row(*[str(task.get("id", -1)), task["name"],
-                      str(task["cputime_ms_per_s"]), str(task.get("gputime_ms_per_s", 0))])
+        table.add_row(*[str(task["cputime_ms_per_s"]), 
+                        str(task.get("gputime_ms_per_s", 0)),
+                        str(task.get("diskio_bytesread",0)), 
+                        str(task.get("diskio_byteswritten",0)), 
+                        task["name"]])
 
     return table
 
