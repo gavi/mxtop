@@ -3,13 +3,16 @@ import queue
 import threading
 import plistlib
 from rich import print
+from rich import box
 from rich.bar import Bar
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from datetime import datetime
 from rich.live import Live
-import os,sys
+import os
+import sys
+
 
 def enqueue_output(pipe, queue):
     try:
@@ -19,11 +22,13 @@ def enqueue_output(pipe, queue):
             if chunk:
                 buffer += chunk  # Add the chunk to the buffer
                 while '\0' in buffer:  # Check if there is a NUL character in the buffer
-                    message, buffer = buffer.split('\0', 1)  # Split the buffer at the first NUL character
+                    # Split the buffer at the first NUL character
+                    message, buffer = buffer.split('\0', 1)
                     try:
                         # Parse the plist data
                         plist_data = plistlib.loads(message.encode('utf-8'))
-                        queue.put(plist_data)  # Put the parsed plist data in the queue
+                        # Put the parsed plist data in the queue
+                        queue.put(plist_data)
                     except Exception as e:
                         print(f"Error parsing plist: {e}")
             else:
@@ -37,33 +42,35 @@ def enqueue_output(pipe, queue):
         pipe.close()
 
 
-def get_plist(file):
-        return plistlib.loads(open(file,"rb").read())
-
 def update_cpus(plist):
     processor_info = plist.get('processor', {})
     clusters = processor_info.get('clusters', [])
     if clusters:  # Check if clusters is not empty
         for cluster in clusters:
-           for cpu in cluster["cpus"]:
-                cpus[cluster["name"]+"_"+str(cpu["cpu"])].end = 1-cpu["idle_ratio"] 
+            for cpu in cluster["cpus"]:
+                cpus[cluster["name"]+"_" +
+                     str(cpu["cpu"])].end = 1-cpu["idle_ratio"]
+
 
 def update_gpus(plist):
     gpu_info = plist.get('gpu', {})
-    gpu.end = 1 - gpu_info.get("idle_ratio",1)
+    gpu.end = 1 - gpu_info.get("idle_ratio", 1)
 
-def update_process(plist)->Table:
+
+def update_process(plist) -> Table:
     table = Table(expand=True)
     table.add_column("id")
     table.add_column("name")
     table.add_column("cpu_time")
     table.add_column("gpu_time")
-    
+
     tasks = plist.get('coalitions', [])
     for task in tasks:
-        table.add_row(*[str(task.get("id",-1)),task["name"],str(task["cputime_ms_per_s"]),str(task.get("gputime_ms_per_s",0))])
+        table.add_row(*[str(task.get("id", -1)), task["name"],
+                      str(task["cputime_ms_per_s"]), str(task.get("gputime_ms_per_s", 0))])
 
     return table
+
 
 def make_layout(plist) -> Layout:
     processor_info = plist.get('processor', {})
@@ -72,10 +79,10 @@ def make_layout(plist) -> Layout:
     layout = Layout(name="root")
 
     layout.split(
-        Layout(name="header",size=3),
-        Layout(name="cpus",size=5),
-        Layout(name="gpu",size=3),
-        Layout(name="process",ratio=1),
+        Layout(name="header", size=3),
+        Layout(name="cpus", size=5),
+        Layout(name="gpu", size=3),
+        Layout(name="process", ratio=1),
     )
     grid = Table.grid(expand=True)
     cluster_panels = []
@@ -84,19 +91,20 @@ def make_layout(plist) -> Layout:
         grid.add_column(ratio=len(cluster["cpus"]))
         cpu_table = Table.grid()
         for cpu in cluster["cpus"]:
-            b = Bar(1,begin=0,end=0)
+            b = Bar(1, begin=0, end=0)
             cpus[cluster["name"]+"_"+str(cpu["cpu"])] = b
-            cpu_panels.append(Panel(b))
+            cpu_panels.append(Panel(b, box=box.SQUARE))
         cpu_table.add_row(*cpu_panels)
-        cluster_panels.append(Panel(cpu_table,title=cluster["name"]))
+        cluster_panels.append(
+            Panel(cpu_table, title=cluster["name"], box=box.SQUARE))
     grid.add_row(*cluster_panels)
-    layout["cpus"].update(grid) 
+    layout["cpus"].update(grid)
     gpu_grid = Table.grid(expand=True)
-    gpu_grid.add_row(Panel(gpu,title="GPU"))
+    gpu_grid.add_row(Panel(gpu, title="GPU", box=box.SQUARE))
     layout["gpu"].update(gpu_grid)
-    
 
     return layout
+
 
 class Header:
     """Display header with clock."""
@@ -109,14 +117,16 @@ class Header:
             "[b]mxtop[/b] Apple Silicon",
             datetime.now().ctime().replace(":", "[blink]:[/]"),
         )
-        return Panel(grid, style="white on blue")
+        return Panel(grid, style="white on blue", box=box.SQUARE)
+
 
 # Globals
 cpus = {}
-gpu =  Bar(1,begin=0,end=0)
+gpu = Bar(1, begin=0, end=0)
+
 
 def main():
-     # Check if the current user ID is not 0 (root)
+    # Check if the current user ID is not 0 (root)
     if os.geteuid() != 0:
         sys.exit("This script must be run as root. Please use sudo.")
     output_queue = queue.LifoQueue()
@@ -125,13 +135,15 @@ def main():
         'sudo', 'powermetrics',
         '--show-process-coalition',
         '--show-process-gpu',
-        '--samplers','tasks,cpu_power,gpu_power,thermal',
+        '--samplers', 'tasks,cpu_power,gpu_power,thermal',
         '-i', '1000',
         '-f', 'plist'
     ]
 
-    process = subprocess.Popen(command, stdout=subprocess.PIPE,stderr=subprocess.STDOUT, text=True)
-    t = threading.Thread(target=enqueue_output, args=(process.stdout, output_queue))
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    t = threading.Thread(target=enqueue_output,
+                         args=(process.stdout, output_queue))
     t.daemon = True
     t.start()
 
@@ -144,7 +156,7 @@ def main():
         update_cpus(first_plist)
         update_gpus(first_plist)
         table = update_process(first_plist)
-        
+
         layout["header"].update(Header())
         layout["process"].update(table)
         # Start the Live display
@@ -161,6 +173,7 @@ def main():
         print("Interrupted by user.")
 
     process.terminate()
+
 
 if __name__ == '__main__':
     main()
